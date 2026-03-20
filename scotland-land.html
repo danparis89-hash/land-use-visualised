@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scotland Land — 100 squares</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f4f0;
+      color: #2c2c2a;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      border: 0.5px solid rgba(0,0,0,0.12);
+      padding: 1.5rem;
+      max-width: 520px;
+      width: 100%;
+    }
+
+    .grid-wrap { padding: 0; }
+
+    .section-label {
+      font-size: 10px;
+      color: #888780;
+      margin-bottom: 5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .spacer { height: 10px; }
+
+    .btn {
+      font-size: 11px; padding: 3px 10px; border-radius: 20px;
+      border: 0.5px solid rgba(0,0,0,0.2);
+      background: transparent; color: #5f5e5a;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .btn:hover { background: #f1efe8; }
+    .btn.active {
+      background: #f1efe8;
+      color: #2c2c2a;
+      border-color: rgba(0,0,0,0.3);
+      font-weight: 500;
+    }
+
+    .divider {
+      width: 0.5px; height: 14px;
+      background: rgba(0,0,0,0.2);
+      margin: 0 2px; display: inline-block; vertical-align: middle;
+    }
+
+    .view-block { height: 52px; overflow: visible; }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 6px 14px;
+      margin-bottom: 4px; font-size: 12px; color: #5f5e5a;
+      height: 80px; align-content: flex-start; overflow: hidden;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; max-width: 420px; }
+
+    .sq {
+      aspect-ratio: 1; border-radius: 3px; cursor: pointer;
+      transition: opacity 0.15s, transform 0.12s;
+    }
+    .sq:hover { transform: scale(1.18); z-index: 2; position: relative; }
+    .sq.dimmed { opacity: 0.12; }
+    .sq.inactive { background: #d3d1c7 !important; opacity: 0.35; cursor: default; }
+    .sq.inactive:hover { transform: none; }
+    .sq.drillable:hover { outline: 2px solid rgba(0,0,0,0.3); outline-offset: 1px; }
+
+    .tooltip {
+      position: fixed;
+      background: #ffffff;
+      border: 0.5px solid rgba(0,0,0,0.2);
+      border-radius: 8px; padding: 8px 12px; font-size: 13px;
+      pointer-events: none; z-index: 100; display: none;
+      color: #2c2c2a; max-width: 220px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 500;
+      color: #2c2c2a;
+      margin-bottom: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Scotland — land in 100 squares</h1>
+  <div class="grid-wrap">
+    <div class="section-label">Layer</div>
+    <div class="row" id="layer-btns">
+      <button class="btn active" onclick="setLayer('Land use')">Land use</button>
+      <button class="btn" onclick="setLayer('Land cover')">Land cover</button>
+      <button class="btn" onclick="setLayer('Agriculture')">Agriculture</button>
+      <button class="btn" onclick="setLayer('Woodland')">Woodland</button>
+      <button class="btn" onclick="setLayer('Land ownership')">Land ownership</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="view-block">
+      <div id="view-inner" style="visibility:hidden">
+        <div class="section-label">View</div>
+        <div class="row" id="view-btns"></div>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const LU = { Agriculture:"#C0DD97", Forestry:"#1D9E75", Urban:"#888780", Other:"#D3D1C7" };
+
+const luCats = [
+  { label:"Agriculture", pct:66,  color:LU.Agriculture, drillable:'Agriculture' },
+  { label:"Woodland",    pct:19,  color:LU.Forestry,    drillable:'Woodland' },
+  { label:"Urban",       pct:2.5, color:LU.Urban },
+  { label:"Other",       pct:12.5,color:LU.Other },
+];
+function buildSeqFromPct(cats) {
+  const seq=[];
+  cats.forEach(c=>{ for(let i=0;i<Math.round(c.pct);i++) seq.push(c); });
+  while(seq.length<100) seq.push(cats[cats.length-1]);
+  while(seq.length>100) seq.pop();
+  return seq;
+}
+const luSeq = buildSeqFromPct(luCats);
+const woodlandPositions = new Set(luSeq.map((c,i)=>c.label==='Woodland'?i:-1).filter(i=>i>=0));
+
+const landCoverCats = [
+  { label:"Rough & semi-natural grassland", pct:50, color:"#EF9F27" },
+  { label:"Improved grassland",             pct:18, color:"#C0DD97" },
+  { label:"Arable and horticulture",        pct:8,  color:"#FCDE5A" },
+  { label:"Woodland",                       pct:19, color:"#1D9E75" },
+  { label:"Urban",                          pct:3,  color:"#888780" },
+  { label:"Other",                          pct:2,  color:"#D3D1C7" },
+];
+const landCoverSeq = buildSeqFromPct(landCoverCats);
+
+const agriCats = [
+  { label:"Rough grazing",             count:35, color:"#EF9F27" },
+  { label:"Barley",                    count:4,  color:"#534AB7" },
+  { label:"Other cereals",             count:2,  color:"#FCDE5A" },
+  { label:"Wheat",                     count:1,  color:"#FAC775" },
+  { label:"Other land incl. woodland", count:6,  color:"#9FE1CB" },
+];
+const agriUsed = agriCats.reduce((s,c)=>s+c.count,0);
+const agriOther = { label:"Other agricultural", count:66-agriUsed, color:LU.Agriculture };
+const agriAllCats = [...agriCats, agriOther];
+const commonGrazings = { label:"Common grazings", count:8, color:"#D85A30" };
+
+const woodlandCats = [
+  { label:"Conifer",                 count:7, color:"#085041" },
+  { label:"Broadleaf",               count:3, color:"#1D9E75" },
+  { label:"Assumed woodland",        count:2, color:"#5DCAA5" },
+  { label:"Young trees",             count:1, color:"#9FE1CB" },
+  { label:"Other, including felled", count:6, color:"#3B6D11" },
+];
+const woodlandSeq = [];
+woodlandCats.forEach(c=>{ for(let i=0;i<c.count;i++) woodlandSeq.push(c); });
+
+const ownershipCats = (()=>{
+  const raw = [
+    { label:"Private",           pct:81,  color:"#AFA9EC" },
+    { label:"Public",            pct:11,  color:"#378ADD" },
+    { label:"Community",         pct:2.7, color:"#1D9E75" },
+    { label:"Environmental NGOs",pct:1.6, color:"#639922" },
+    { label:"Heritage",          pct:1.2, color:"#BA7517" },
+    { label:"Urban",             pct:2.3, color:"#888780" },
+  ];
+  const floored = raw.map(c=>({...c, count:Math.floor(c.pct)}));
+  const need = 100 - floored.reduce((s,c)=>s+c.count,0);
+  const rem = raw.map((c,i)=>({i, r:c.pct-floored[i].count})).sort((a,b)=>b.r-a.r);
+  for(let i=0;i<need;i++) floored[rem[i].i].count++;
+  return floored;
+})();
+const ownershipSeq = (()=>{ const s=[]; ownershipCats.forEach(c=>{ for(let i=0;i<c.count;i++) s.push(c); }); return s; })();
+
+const TIER_COLOR    = "#3C3489";
+const PRIVATE_COLOR = "#AFA9EC";
+const TIERS = {
+  top15:  { sq:10, label:"15 private owners" },
+  top47:  { sq:20, label:"47 private owners" },
+  top408: { sq:50, label:"408 private owners" },
+};
+
+let activeLayer = "Land use";
+let agriView    = "detail";
+let ownerView   = "breakdown";
+let hoveredCat  = null;
+
+function render() {
+  document.querySelectorAll('#layer-btns .btn').forEach(b=>{
+    b.classList.toggle('active', b.textContent.trim()===activeLayer);
+  });
+  const viewInner = document.getElementById('view-inner');
+  viewInner.style.visibility = (activeLayer==='Agriculture'||activeLayer==='Land ownership') ? 'visible' : 'hidden';
+
+  if (activeLayer==='Agriculture') {
+    document.getElementById('view-btns').innerHTML =
+      `<button class="btn${agriView==='detail'?' active':''}" onclick="setAgriView('detail')">Breakdown</button>` +
+      `<div class="divider"></div>` +
+      `<button class="btn${agriView==='common'?' active':''}" onclick="setAgriView('common')">Common grazings</button>`;
+    renderAgri();
+  } else if (activeLayer==='Land ownership') {
+    document.getElementById('view-btns').innerHTML =
+      `<button class="btn${ownerView==='breakdown'?' active':''}" onclick="setOwnerView('breakdown')">Breakdown</button>` +
+      `<div class="divider"></div>` +
+      `<button class="btn${ownerView==='top15'?' active':''}" onclick="setOwnerView('top15')">15 private owners</button>` +
+      `<button class="btn${ownerView==='top47'?' active':''}" onclick="setOwnerView('top47')">47 private owners</button>` +
+      `<button class="btn${ownerView==='top408'?' active':''}" onclick="setOwnerView('top408')">408 private owners</button>`;
+    renderOwnership();
+  } else if (activeLayer==='Woodland') {
+    document.getElementById('view-btns').innerHTML = '';
+    renderWoodland();
+  } else if (activeLayer==='Land cover') {
+    document.getElementById('view-btns').innerHTML = '';
+    renderLandCover();
+  } else {
+    document.getElementById('view-btns').innerHTML = '';
+    renderLU();
+  }
+}
+
+function renderLU() {
+  document.getElementById('legend').innerHTML = luCats.map(c=>
+    `<div class="legend-item" onmouseenter="hoverCat('${c.label}')" onmouseleave="hoverCat(null)"
+      ${c.drillable ? `onclick="drillTo('${c.drillable}')" style="cursor:pointer"` : ''}>
+      <div class="legend-dot" style="background:${c.color}"></div>
+      <span>${c.label} — <strong>${c.pct}%</strong>${c.drillable ? ' <span style="font-size:10px;color:#888780">↗</span>' : ''}</span>
+    </div>`
+  ).join('');
+  document.getElementById('grid').innerHTML = luSeq.map(c=>
+    c.drillable
+      ? `<div class="sq drillable" data-cat="${c.label}" style="background:${c.color}"
+            onmouseenter="showTip(event,'${c.label}',true)" onmouseleave="hideTip()"
+            onclick="drillTo('${c.drillable}')"></div>`
+      : `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+            onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`
+  ).join('');
+  applyDim();
+}
+
+function renderLandCover() {
+  document.getElementById('legend').innerHTML = landCoverCats.map(c=>
+    `<div class="legend-item" onmouseenter="hoverCat('${c.label}')" onmouseleave="hoverCat(null)">
+      <div class="legend-dot" style="background:${c.color}"></div>
+      <span>${c.label} — <strong>${c.pct}%</strong></span>
+    </div>`
+  ).join('');
+  document.getElementById('grid').innerHTML = landCoverSeq.map(c=>
+    `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+      onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`
+  ).join('');
+  applyDim();
+}
+
+function drillTo(layer) {
+  activeLayer = layer;
+  if (layer==='Agriculture') agriView='detail';
+  hoveredCat = null;
+  render();
+}
+
+function renderWoodland() {
+  const woodlandPosArr = [...woodlandPositions].sort((a,b)=>a-b);
+  const seq = new Array(100).fill(null);
+  woodlandPosArr.forEach((pos, i) => { seq[pos] = woodlandSeq[i]; });
+  document.getElementById('legend').innerHTML = woodlandCats.map(c=>
+    `<div class="legend-item" onmouseenter="hoverCat('${c.label}')" onmouseleave="hoverCat(null)">
+      <div class="legend-dot" style="background:${c.color}"></div>
+      <span>${c.label} — <strong>${c.count}%</strong></span>
+    </div>`
+  ).join('');
+  document.getElementById('grid').innerHTML = seq.map(c=>{
+    if(!c) return `<div class="sq inactive"></div>`;
+    return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+      onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
+  }).join('');
+  applyDim();
+}
+
+function renderAgri() {
+  const grid=document.getElementById('grid'), legend=document.getElementById('legend');
+  if (agriView==='detail') {
+    const seq=[];
+    agriAllCats.forEach(c=>{ for(let i=0;i<c.count;i++) seq.push(c); });
+    for(let i=0;i<34;i++) seq.push(null);
+    legend.innerHTML = agriCats.map(c=>
+      `<div class="legend-item" onmouseenter="hoverCat('${c.label}')" onmouseleave="hoverCat(null)">
+        <div class="legend-dot" style="background:${c.color}"></div>
+        <span>${c.label} — <strong>${c.count}%</strong></span>
+      </div>`
+    ).join('');
+    grid.innerHTML = seq.map(c=>{
+      if(!c) return `<div class="sq inactive"></div>`;
+      return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+        onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
+    }).join('');
+  } else {
+    const seq=[...Array(commonGrazings.count).fill(commonGrazings),...Array(58).fill('dim'),...Array(34).fill(null)];
+    legend.innerHTML =
+      `<div class="legend-item"><div class="legend-dot" style="background:${commonGrazings.color}"></div>
+        <span>${commonGrazings.label} — <strong>${commonGrazings.count}%</strong></span></div>
+      <div class="legend-item" style="opacity:0.4"><div class="legend-dot" style="background:${LU.Agriculture}"></div>
+        <span>Other agricultural — <strong>58%</strong></span></div>`;
+    grid.innerHTML = seq.map(c=>{
+      if(!c) return `<div class="sq inactive"></div>`;
+      if(c==='dim') return `<div class="sq" style="background:${LU.Agriculture};opacity:0.25;cursor:default"></div>`;
+      return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+        onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
+    }).join('');
+  }
+  applyDim();
+}
+
+function renderOwnership() {
+  const grid=document.getElementById('grid'), legend=document.getElementById('legend');
+  if (ownerView==='breakdown') {
+    legend.innerHTML = ownershipCats.map(c=>
+      `<div class="legend-item" onmouseenter="hoverCat('${c.label}')" onmouseleave="hoverCat(null)">
+        <div class="legend-dot" style="background:${c.color}"></div>
+        <span>${c.label} — <strong>${c.pct}%</strong></span>
+      </div>`
+    ).join('');
+    grid.innerHTML = ownershipSeq.map(c=>
+      `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
+        onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`
+    ).join('');
+  } else {
+    const tier=TIERS[ownerView], highlightCount=tier.sq;
+    legend.innerHTML =
+      `<div class="legend-item"><div class="legend-dot" style="background:${TIER_COLOR}"></div>
+        <span>${tier.label} — <strong>${highlightCount}%</strong></span></div>
+      <div class="legend-item" style="opacity:0.45"><div class="legend-dot" style="background:${PRIVATE_COLOR}"></div>
+        <span>Other private</span></div>
+      <div class="legend-item" style="opacity:0.35"><div class="legend-dot" style="background:#d3d1c7"></div>
+        <span>Non-private</span></div>`;
+    const squares=[];
+    for(let i=0;i<81;i++){
+      const hl=i<highlightCount;
+      squares.push(`<div class="sq" data-cat="${hl?tier.label:'Other private'}" style="background:${hl?TIER_COLOR:PRIVATE_COLOR};opacity:${hl?'1':'0.2'}"
+        onmouseenter="showTip(event,'${hl?tier.label:'Other private'}',false)" onmouseleave="hideTip()"></div>`);
+    }
+    for(let i=0;i<19;i++) squares.push(`<div class="sq inactive"></div>`);
+    grid.innerHTML=squares.join('');
+  }
+  applyDim();
+}
+
+function setLayer(l)     { activeLayer=l; hoveredCat=null; render(); }
+function setAgriView(v)  { agriView=v;   hoveredCat=null; render(); }
+function setOwnerView(v) { ownerView=v;  hoveredCat=null; render(); }
+function hoverCat(label) { hoveredCat=label; applyDim(); }
+
+function applyDim() {
+  document.querySelectorAll('#grid .sq').forEach(sq=>{
+    if(sq.classList.contains('inactive')) return;
+    sq.classList.toggle('dimmed', !!hoveredCat && sq.dataset.cat!==hoveredCat);
+  });
+  document.querySelectorAll('.legend-item').forEach(li=>{
+    const dot=li.querySelector('.legend-dot');
+    if(!dot||!dot.nextSibling) return;
+    const label=dot.nextSibling.textContent.split(' — ')[0].trim();
+    li.style.opacity=(!hoveredCat||label===hoveredCat)?'1':'0.4';
+  });
+}
+
+function showTip(e,label,drillable){
+  hoveredCat=label; applyDim();
+  const t=document.getElementById('tooltip');
+  t.innerHTML=drillable
+    ?`<strong>${label}</strong><br><span style="color:#888780;font-size:11px">Click to explore</span>`
+    :`<strong>${label}</strong>`;
+  t.style.display='block'; moveTip(e);
+}
+function hideTip(){
+  hoveredCat=null; applyDim();
+  document.getElementById('tooltip').style.display='none';
+}
+document.addEventListener('mousemove',e=>{
+  if(document.getElementById('tooltip').style.display==='block') moveTip(e);
+});
+function moveTip(e){
+  const t=document.getElementById('tooltip');
+  let x=e.clientX+14,y=e.clientY-10;
+  if(x+230>window.innerWidth) x=e.clientX-235;
+  t.style.left=x+'px'; t.style.top=y+'px';
+}
+
+render();
+</script>
+</body>
+</html>
