@@ -80,6 +80,8 @@
     .sq.dimmed { opacity: 0.12; }
     .sq.inactive { background: #d3d1c7 !important; opacity: 0.35; cursor: default; }
     .sq.inactive:hover { transform: none; }
+    .sq.inactive.back { cursor: pointer; }
+    .sq.inactive.back:hover { opacity: 0.55; transform: scale(1.1); }
     .sq.drillable:hover { outline: 2px solid rgba(0,0,0,0.3); outline-offset: 1px; }
 
     .tooltip {
@@ -290,7 +292,7 @@ function renderWoodland() {
     </div>`
   ).join('');
   document.getElementById('grid').innerHTML = seq.map(c=>{
-    if(!c) return `<div class="sq inactive"></div>`;
+    if(!c) return `<div class="sq inactive back" onclick="setLayer('Land use')" onmouseenter="showTip(event,'← Land use',false)" onmouseleave="hideTip()"></div>`;
     return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
       onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
   }).join('');
@@ -310,7 +312,7 @@ function renderAgri() {
       </div>`
     ).join('');
     grid.innerHTML = seq.map(c=>{
-      if(!c) return `<div class="sq inactive"></div>`;
+      if(!c) return `<div class="sq inactive back" onclick="setLayer('Land use')" onmouseenter="showTip(event,'← Land use',false)" onmouseleave="hideTip()"></div>`;
       return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
         onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
     }).join('');
@@ -322,7 +324,7 @@ function renderAgri() {
       <div class="legend-item" style="opacity:0.4"><div class="legend-dot" style="background:${LU.Agriculture}"></div>
         <span>Other agricultural — <strong>58%</strong></span></div>`;
     grid.innerHTML = seq.map(c=>{
-      if(!c) return `<div class="sq inactive"></div>`;
+      if(!c) return `<div class="sq inactive back" onclick="setLayer('Land use')" onmouseenter="showTip(event,'← Land use',false)" onmouseleave="hideTip()"></div>`;
       if(c==='dim') return `<div class="sq" style="background:${LU.Agriculture};opacity:0.25;cursor:default"></div>`;
       return `<div class="sq" data-cat="${c.label}" style="background:${c.color}"
         onmouseenter="showTip(event,'${c.label}',false)" onmouseleave="hideTip()"></div>`;
@@ -400,8 +402,12 @@ document.addEventListener('mousemove',e=>{
 });
 function moveTip(e){
   const t=document.getElementById('tooltip');
-  let x=e.clientX+14,y=e.clientY-10;
-  if(x+230>window.innerWidth) x=e.clientX-235;
+  const tw=t.offsetWidth||220, th=t.offsetHeight||50;
+  let x=e.clientX+14, y=e.clientY-10;
+  if(x+tw>window.innerWidth-4) x=e.clientX-tw-8;
+  if(x<4) x=4;
+  if(y+th>window.innerHeight-4) y=window.innerHeight-th-4;
+  if(y<4) y=4;
   t.style.left=x+'px'; t.style.top=y+'px';
 }
 
