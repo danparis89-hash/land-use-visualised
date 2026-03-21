@@ -400,8 +400,12 @@ document.addEventListener('mousemove',e=>{
 });
 function moveTip(e){
   const t=document.getElementById('tooltip');
-  let x=e.clientX+14,y=e.clientY-10;
-  if(x+230>window.innerWidth) x=e.clientX-235;
+  const tw=t.offsetWidth||220, th=t.offsetHeight||50;
+  let x=e.clientX+14, y=e.clientY-10;
+  if(x+tw>window.innerWidth-4) x=e.clientX-tw-8;
+  if(x<4) x=4;
+  if(y+th>window.innerHeight-4) y=window.innerHeight-th-4;
+  if(y<4) y=4;
   t.style.left=x+'px'; t.style.top=y+'px';
 }
 
